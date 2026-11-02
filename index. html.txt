@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>비밀번호 해독 시뮬레이터</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--tx:#1b1f2a;--sub:#5d6677;--ac:#2f5bea;--bd:#dfe3ec;--red:#e5484d;--amb:#f5a524;--grn:#2da44e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141b;--card:#1b1f2a;--tx:#eceff6;--sub:#9aa3b5;--ac:#7c9bff;--bd:#2c3242;color-scheme:dark}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 -apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;padding:14px;max-width:720px;margin:auto}
+h1{font-size:20px;margin:6px 0 2px}p.s{color:var(--sub);margin:0 0 12px;font-size:13px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+h2{font-size:15px;margin:0 0 10px}
+button{font:inherit;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;padding:8px 10px;margin:0 6px 6px 0;cursor:pointer}
+button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+label{display:inline-block;margin:0 12px 6px 0}
+input[type=number]{font:inherit;width:70px;padding:6px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
+.w{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{border-bottom:1px solid var(--bd);padding:6px 4px;text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}
+.b{display:inline-block;background:var(--bg);border-radius:6px;padding:2px 8px;margin:0 6px 6px 0;font-size:13px}
+.n{color:var(--sub);font-size:12px}
+</style>
+</head>
+<body>
+<h1>비밀번호 해독 시뮬레이터</h1>
+<p class="s">자릿수와 문자 종류를 넣으면 평균 시도 횟수와 해독 시간이 나옵니다.</p>
+
+<div class="c"><h2>① 설문 기반 프리셋</h2>
+<button onclick="pre(10,1,1,0,1)">설문 최빈 (10자, 숫자+소문자+특수)</button>
+<button onclick="pre(8,1,1,0,0)">8자 숫자+소문자</button>
+<button onclick="pre(6,1,0,0,0)">6자 숫자만</button>
+<button onclick="pre(12,1,1,1,1)">12자 전체</button>
+<p class="n">최빈 패턴 = 9~11자 구간 최다(대표 10자) + 사용률 상위 3개 문자</p></div>
+
+<div class="c"><h2>② 직접 입력</h2>
+<label>자릿수 <input id="n" type="number" min="1" max="30" value="8"></label><br>
+<label><input type="checkbox" id="d" checked> 숫자(10)</label>
+<label><input type="checkbox" id="l" checked> 소문자(26)</label>
+<label><input type="checkbox" id="u"> 대문자(26)</label>
+<label><input type="checkbox" id="x"> 특수문자(32)</label><br>
+<button class="p" onclick="run()">시뮬레이션 실행</button>
+<button onclick="bday()">생일 패턴 공격</button>
+<p class="n" id="sp">이 기기의 대입 속도 측정 중…</p></div>
+
+<div class="c" id="out" style="display:none"></div>
+<div class="c" id="ch" style="display:none"><h2>자릿수별 평균 해독 시간 (GPU 가정, 로그 눈금)</h2>
+<div class="w"><svg id="svg" viewBox="0 0 360 210" width="100%" role="img" aria-label="자릿수별 해독 시간 그래프"></svg></div>
+<p class="n"><span style="color:var(--red)">■</span> 1시간 미만 <span style="color:var(--amb)">■</span> 1년 미만 <span style="color:var(--grn)">■</span> 1년 이상 · 막대 높이는 log₁₀(초)</p></div>
+
+<script>
+// SHA-256 (소형 구현)
+const P=[];for(let i=2;P.length<64;i++){if(P.every(p=>i%p))P.push(i)}
+const fr=x=>Math.floor((x-Math.floor(x))*4294967296)>>>0;
+const K=P.map(p=>fr(Math.cbrt(p))),H0=P.slice(0,8).map(p=>fr(Math.sqrt(p)));
+function sha(s){const b=[];for(let i=0;i<s.length;i++)b.push(s.charCodeAt(i));const L=b.length*8;b.push(128);
+while(b.length%64!==56)b.push(0);b.push(0,0,0,0,(L>>>24)&255,(L>>>16)&255,(L>>>8)&255,L&255);
+let h=H0.slice();const w=new Uint32Array(64);
+for(let o=0;o<b.length;o+=64){for(let i=0;i<16;i++)w[i]=(b[o+4*i]<<24)|(b[o+4*i+1]<<16)|(b[o+4*i+2]<<8)|b[o+4*i+3];
+for(let i=16;i<64;i++){const a=w[i-15],c=w[i-2];w[i]=(w[i-16]+(((a>>>7)|(a<<25))^((a>>>18)|(a<<14))^(a>>>3))+w[i-7]+(((c>>>17)|(c<<15))^((c>>>19)|(c<<13))^(c>>>10)))|0}
+let A=h[0],B=h[1],C=h[2],D=h[3],E=h[4],F=h[5],G=h[6],Hh=h[7];
+for(let i=0;i<64;i++){const t1=(Hh+(((E>>>6)|(E<<26))^((E>>>11)|(E<<21))^((E>>>25)|(E<<7)))+((E&F)^(~E&G))+K[i]+w[i])|0;
+const t2=((((A>>>2)|(A<<30))^((A>>>13)|(A<<19))^((A>>>22)|(A<<10)))+((A&B)^(A&C)^(B&C)))|0;
+Hh=G;G=F;F=E;E=(D+t1)|0;D=C;C=B;B=A;A=(t1+t2)|0}
+h=[h[0]+A,h[1]+B,h[2]+C,h[3]+D,h[4]+E,h[5]+F,h[6]+G,h[7]+Hh].map(v=>v|0)}
+return h}
+const eq=(a,b)=>{for(let i=0;i<8;i++)if(a[i]!==b[i])return false;return true};
+const I2S=(i,cs,n)=>{let s="";const k=cs.length;for(let j=0;j<n;j++){s=cs[i%k]+s;i=Math.floor(i/k)}return s};
+
+let speed=1e5;
+function bench(){const t0=performance.now();let c=0;const tg=sha("zzzzzz");
+while(performance.now()-t0<600){for(let j=0;j<500;j++){eq(sha(I2S(c,"abcdefghijklmnopqrstuvwxyz",6)),tg);c++}}
+speed=c/((performance.now()-t0)/1000);
+document.getElementById("sp").textContent="이 기기 측정 속도: 초당 약 "+Math.round(speed).toLocaleString()+"회 (브라우저 · SHA-256)"}
+
+function ft(s){if(s<1e-3)return(s*1e6).toFixed(1)+"마이크로초";if(s<1)return(s*1e3).toFixed(1)+"밀리초";
+const u=[["초",60],["분",60],["시간",24],["일",365],["년",1000],["천년",1e12]];let v=s;
+for(const[n,d]of u){if(v<d)return v.toLocaleString("ko-KR",{maximumFractionDigits:1})+n;v/=d}return s.toExponential(2)+"초"}
+const E=x=>x.toExponential(2).replace("e+","×10^");
+const $=id=>document.getElementById(id);
+function pre(n,d,l,u,x){$("n").value=n;$("d").checked=!!d;$("l").checked=!!l;$("u").checked=!!u;$("x").checked=!!x;run()}
+function cset(){let s="";if($("d").checked)s+="0123456789";if($("l").checked)s+="abcdefghijklmnopqrstuvwxyz";
+if($("u").checked)s+="ABCDEFGHIJKLMNOPQRSTUVWXYZ";if($("x").checked)s+="!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";return s}
+const LIM=200000;
+
+function run(){const cs=cset(),n=Math.max(1,Math.min(30,+$("n").value||8));
+if(!cs){alert("문자 종류를 하나 이상 선택하세요");return}
+const o=$("out");o.style.display="block";o.innerHTML="계산 중…";
+setTimeout(()=>{const k=cs.length,N=Math.pow(k,n),avg=(N+1)/2;let h="<h2>결과</h2>"+
+`<span class="b">문자 종류 k = ${k}</span><span class="b">자릿수 n = ${n}</span><span class="b">경우의 수 N = ${E(N)}</span>`+
+`<p>이론 평균 시도 횟수 (N+1)/2 = <b>${E(avg)}</b>회<br>최악 시도 횟수 = ${E(N)}회</p>`;
+if(N<=LIM){const T=10;let sc=0,st=0;for(let t=0;t<T;t++){const pw=I2S(Math.floor(Math.random()*N),cs,n),tg=sha(pw);
+const t0=performance.now();let i=0;for(;i<N;i++){if(eq(sha(I2S(i,cs,n)),tg))break}
+sc+=i+1;st+=(performance.now()-t0)/1000}
+h+=`<p><b>[실측]</b> ${T}회 반복 평균 시도 ${Math.round(sc/T).toLocaleString()}회, 평균 ${ft(st/T)} (이론과 오차 ${(Math.abs(sc/T-avg)/avg*100).toFixed(1)}%)</p>`}
+else h+='<p class="n">경우의 수가 커서 실제 대입은 생략하고, 측정 속도로 계산했습니다.</p>';
+const S=[["온라인 공격 (가정 100회/초)",100],["이 기기 (실측 속도)",speed],["고성능 GPU (가정 10^10회/초)",1e10]];
+h+='<div class="w"><table><tr><th>환경</th><th>평균 시간</th><th>최악 시간</th></tr>'+S.map(([a,v])=>`<tr><td>${a}</td><td>${ft(avg/v)}</td><td>${ft(N/v)}</td></tr>`).join("")+"</table></div>";
+o.innerHTML=h;chart(k)},30)}
+
+function chart(k){$("ch").style.display="block";const sv=$("svg");const v=[];for(let n=1;n<=16;n++)v.push(Math.log10((Math.pow(k,n)+1)/2/1e10));
+const lo=Math.min(...v)-0.5,hi=Math.max(...v),W=360,Hh=170,bw=18;let s="";
+v.forEach((y,i)=>{const sec=Math.pow(10,y),hh=Math.max(2,(y-lo)/(hi-lo)*(Hh-20)),x=12+i*21;
+const c=sec<3600?"var(--red)":sec<3.15e7?"var(--amb)":"var(--grn)";
+s+=`<rect x="${x}" y="${Hh-hh}" width="${bw}" height="${hh}" fill="${c}" rx="2"/><text x="${x+9}" y="${Hh+13}" font-size="9" text-anchor="middle" fill="var(--sub)">${i+1}</text>`});
+s+=`<text x="${W/2}" y="${Hh+28}" font-size="10" text-anchor="middle" fill="var(--sub)">자릿수 n (k=${k}), 최고 약 10^${hi.toFixed(0)}초</text>`;sv.innerHTML=s}
+
+function bday(){const o=$("out");o.style.display="block";o.innerHTML="계산 중…";setTimeout(()=>{
+const c=[];for(let y=1950;y<=2015;y++)for(let m=1;m<=12;m++){const dm=new Date(y,m,0).getDate();for(let d=1;d<=dm;d++)c.push(""+y+String(m).padStart(2,"0")+String(d).padStart(2,"0"))}
+const T=30;let sum=0;for(let t=0;t<T;t++){const idx=Math.floor(Math.random()*c.length),tg=sha(c[idx]);
+for(let i=0;i<c.length;i++){if(eq(sha(c[i]),tg)){sum+=i+1;break}}}
+const a=sum/T;o.innerHTML=`<h2>개인정보 사전 공격 (생일 8자리 YYYYMMDD, 1950~2015년생)</h2>
+<span class="b">후보 ${c.length.toLocaleString()}개</span><span class="b">숫자 8자리 무작위 100,000,000개</span>
+<p>평균 시도 횟수(실측, ${T}회) = <b>${Math.round(a).toLocaleString()}</b>회 (이론 ${Math.round((c.length+1)/2).toLocaleString()}회)<br>
+표본공간이 약 <b>${Math.round(1e8/c.length).toLocaleString()}배</b> 줄어듭니다.</p>`},30)}
+
+setTimeout(bench,200);
+</script>
+</body>
+</html>
